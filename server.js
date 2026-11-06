@@ -218,7 +218,7 @@ async function sendBundle(phone) {
 
 function callMeFlow(farmer) {
   placeCall(farmer.phone, farmerAdvice(farmer)).catch(console.error);
-  return 'END ' + t(farmer.language, 'callMe');
+  return 'END ' + t(farmer.language, 'callMe') + ((!at || !VOICE_FROM) ? ' (simulated)' : '');
 }
 
 /* ---------- Airtime rewards for price reports ---------- */
@@ -288,12 +288,12 @@ function reportFlow(parts, farmer) {
   const accepted = db.prepare("SELECT COUNT(*) n FROM reports WHERE phone=? AND status='accepted'").get(farmer.phone).n;
   const bonus = DATA_EVERY > 0 && accepted % DATA_EVERY === 0;
   if (bonus) sendBundle(farmer.phone).catch(console.error);
-  const extra = bonus ? ' ' + t(lang, 'reportBonus', { mb: DATA_MB }) : '';
+  const extra = bonus ? ' ' + t(lang, 'reportBonus', { mb: DATA_MB }) + ((!at || !MOBILE_DATA_PRODUCT) ? ' (simulated)' : '') : '';
   if (!eligible) return 'END ' + t(lang, 'reportNoReward') + extra;
   sendAirtime(redirect || farmer.phone, reward, `report-${id}`, !!redirect)
     .then(r => db.prepare('UPDATE reports SET reward_status=?, reward_note=? WHERE id=?').run(r.ok ? 'sent' : 'failed', String(r.note).slice(0, 200), id))
     .catch(console.error);
-  return 'END ' + t(lang, 'reportAccepted', { currency: reward.currency, amount: reward.amount }) + extra;
+  return 'END ' + t(lang, 'reportAccepted', { currency: reward.currency, amount: reward.amount }) + (redirect ? ' (sandbox test number)' : '') + extra;
 }
 
 function adviceFlow(farmer) {
@@ -365,6 +365,11 @@ app.post('/voice', (req, res) => {
 
 const sha = v => crypto.createHash('sha256').update(String(v)).digest();
 const fails = new Map(); // ip -> { n, t }: after 20 wrong keys in 10 minutes, that visitor is locked out
+// Opening the callback addresses in a browser sends GET. Africa's Talking sends POST, so explain that instead of "Cannot GET".
+const postOnly = name => (req, res) => res.status(405).set('Allow', 'POST').type('text/plain').send(`${name} callback. Africa's Talking calls this address with a POST request, so a browser cannot use it. Open / for the project page.`);
+app.get('/ussd', postOnly('USSD'));
+app.get('/voice', postOnly('Voice'));
+
 const HOSTED = !!(process.env.RENDER || process.env.NODE_ENV === 'production');
 const auth = (req, res, next) => {
   if (HOSTED && ADMIN_KEY === 'change-me') return res.status(503).json({ error: 'ADMIN_KEY is not set on this server' });
