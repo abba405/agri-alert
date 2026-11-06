@@ -365,7 +365,9 @@ app.post('/voice', (req, res) => {
 
 const sha = v => crypto.createHash('sha256').update(String(v)).digest();
 const fails = new Map(); // ip -> { n, t }: after 20 wrong keys in 10 minutes, that visitor is locked out
+const HOSTED = !!(process.env.RENDER || process.env.NODE_ENV === 'production');
 const auth = (req, res, next) => {
+  if (HOSTED && ADMIN_KEY === 'change-me') return res.status(503).json({ error: 'ADMIN_KEY is not set on this server' });
   const ip = req.ip, rec = fails.get(ip) || { n: 0, t: Date.now() };
   if (Date.now() - rec.t > 10 * 60e3) { rec.n = 0; rec.t = Date.now(); }
   if (rec.n >= 20) return res.status(429).json({ error: 'too many attempts' });
@@ -374,6 +376,29 @@ const auth = (req, res, next) => {
   res.status(401).json({ error: 'unauthorized' });
 };
 
+const PUBLIC_USSD_CODE = process.env.PUBLIC_USSD_CODE || '';
+const htmlEsc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function landingHtml() {
+  const env = (process.env.AT_USERNAME || 'sandbox') === 'sandbox' ? ' (sandbox)' : '';
+  const rows = [
+    ['USSD', 'Live' + env, 'Registration, prices, advice, questions, price reports, voice request'],
+    ['SMS', at ? 'Live' + env : 'Dry-run (no API key)', 'Advice, weather alerts and expert replies'],
+    ['Airtime', at ? 'Live' + env : 'Dry-run (no API key)', SANDBOX_REDIRECT ? 'Reward for accepted price reports. In this sandbox it goes to a Kenyan test number' : 'Reward for accepted price reports'],
+    ['Voice', at && VOICE_FROM ? 'Live' : 'Simulated', at && VOICE_FROM ? 'Calls with advice and weather alerts' : 'No voice number provisioned yet, so nothing is sent. Entries are labelled simulated'],
+    ['Mobile Data', at && MOBILE_DATA_PRODUCT ? 'Live' : 'Simulated', at && MOBILE_DATA_PRODUCT ? 'Data bundle on every 3rd accepted price report' : 'No data product provisioned yet, so nothing is sent. Entries are labelled simulated'],
+  ].map(r => `<tr><td>${r[0]}</td><td><b>${htmlEsc(r[1])}</b></td><td>${htmlEsc(r[2])}</td></tr>`).join('');
+  const code = PUBLIC_USSD_CODE ? `<b>${htmlEsc(PUBLIC_USSD_CODE)}</b>` : 'the USSD code for this deployment';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${htmlEsc(APP_NAME)}</title>
+<style>body{margin:0;background:#F4F7F2;color:#0F1F14;font:15px/1.6 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:760px;margin:0 auto;padding:32px 20px}
+h1{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}h2{font-size:18px;margin:28px 0 8px}p{margin:0 0 10px}.lead{color:#52604D}
+.card{background:#fff;border:1px solid #E7ECE4;border-radius:14px;padding:16px 20px}table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;padding:8px 10px;border-bottom:1px solid #E7ECE4;vertical-align:top}th{color:#52604D;font-weight:600}
+tr:last-child td{border-bottom:0}ol{padding-left:20px;margin:0}li{margin-bottom:6px}a.btn{display:inline-block;background:#0E2A1B;color:#fff;text-decoration:none;font-weight:600;padding:10px 18px;border-radius:999px;margin-top:8px}a.btn:hover{background:#17402A}</style></head>
+<body><main><h1>${htmlEsc(APP_NAME)}</h1><p class="lead">Farm advice, market prices and weather alerts for farmers in Kano State by USSD, SMS and voice, with airtime and data rewards for price reports. No internet or smartphone needed.</p>
+<h2>Africa's Talking APIs</h2><div class="card"><table><thead><tr><th>API</th><th>Status</th><th>What it does</th></tr></thead><tbody>${rows}</tbody></table></div>
+<h2>How to test</h2><div class="card"><ol><li>Open the Africa's Talking simulator and enter a Nigerian test number.</li><li>Dial ${code}.</li><li>Register: choose an LGA, a crop and a language.</li><li>Dial again. The menu has seven options.</li><li>Choose 6 to report a price (three different crops earn a data bonus), and 7 to request a voice call.</li><li>Open the operator dashboard to watch every API call and send a weather alert.</li></ol>
+<a class="btn" href="/admin">Operator dashboard</a><p class="lead" style="margin-top:10px;font-size:13px">The dashboard needs the admin key, which is shared separately.</p></div></main></body></html>`;
+}
+app.get('/', (req, res) => res.type('html').send(landingHtml()));
 app.get('/health', (req, res) => res.json({ ok: true, build: BUILD }));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
 

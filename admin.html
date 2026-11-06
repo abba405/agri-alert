@@ -128,7 +128,7 @@ const naira=n=>'N'+Number(n).toLocaleString('en-US');
 const empty=(c,m)=>`<tr><td colspan="${c}" class="empty">${m}</td></tr>`;
 const COL={ussd:'#134E2B',sms:'#3E8E5A',airtime:'#9ED14B',voice:'#F2993B',data:'#C8D3C2'};
 const APIS=[['ussd','USSD'],['sms','SMS'],['airtime','Airtime'],['voice','Voice'],['data','Mobile Data']];
-async function api(u,b){const r=await fetch(u,{method:b?'POST':'GET',headers:{'x-admin-key':KEY,'content-type':'application/json'},body:b?JSON.stringify(b):undefined});if(r.status===401)throw new Error('unauthorized');if(r.status===429)throw new Error('locked');return r.json()}
+async function api(u,b){const r=await fetch(u,{method:b?'POST':'GET',headers:{'x-admin-key':KEY,'content-type':'application/json'},body:b?JSON.stringify(b):undefined});if(r.status===401)throw new Error('unauthorized');if(r.status===429)throw new Error('locked');if(r.status===503)throw new Error('nokey');return r.json()}
 const fill=(id,l)=>{const e=$(id);if(!e.dataset.f){e.innerHTML=l.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');e.dataset.f=1}};
 
 function smooth(p,lo=14,hi=194){const k=v=>Math.min(hi,Math.max(lo,v));if(p.length<2)return'';let d=`M${p[0][0]},${p[0][1]}`;for(let i=0;i<p.length-1;i++){const a=p[i-1]||p[i],b=p[i],c=p[i+1],e=p[i+2]||c;
@@ -191,7 +191,7 @@ async function unlock(){KEY=$('key').value;if(!KEY){$('gmsg').textContent='Enter
   timer=setInterval(()=>refresh().catch(e=>{
    if(e.message==='unauthorized'||e.message==='locked'){clearInterval(timer);KEY='';$('gate').hidden=false;$('gmsg').textContent=e.message==='locked'?'Locked out. Restart the server, or wait 10 minutes.':'The key changed or the server restarted. Enter the key again.'}
    else{$('dot').className='dot off';$('conn').textContent='Connection lost'}}),10000)}
- catch(e){KEY='';$('gmsg').textContent=e.message==='unauthorized'?'That key does not match your .env file.':e.message==='locked'?'Too many wrong attempts. Try again in 10 minutes.':'Could not reach the server.'}}
+ catch(e){KEY='';$('gmsg').textContent=e.message==='unauthorized'?'That key does not match your .env file.':e.message==='locked'?'Too many wrong attempts. Try again in 10 minutes.':e.message==='nokey'?'This server has no ADMIN_KEY set. Add it in the host\'s environment settings.':'Could not reach the server.'}}
 async function force(){const o=$('stageOut'),b=$('force');if(!S){$('gate').hidden=false;return}b.disabled=true;const id=$('lga').value;
  try{const r=await api('/api/alert',{lga:id,force:true});o.textContent=`Alert sent to ${r.sent} farmer(s) in ${nameOf(S.lgas,id)}.`;refresh()}catch(e){o.textContent='Could not reach the server.'}b.disabled=false}
 async function savePrice(){const o=$('pout');try{const r=await api('/api/price',{market:$('mk').value,crop:$('cr').value,price:$('pr').value});o.textContent=r.ok?'Price saved.':'Check the price and try again.';if(r.ok){$('pr').value='';refresh()}}catch(e){o.textContent='Could not reach the server.'}}
